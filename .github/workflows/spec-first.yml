@@ -1,0 +1,62 @@
+name: Spec-First CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'api-spec.yaml' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'api-spec.yaml' ]
+
+jobs:
+  validate-spec:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Validate OpenAPI spec
+      uses: swagger-api/validator-badge@master
+      with:
+        schema: api-spec.yaml
+
+  generate-and-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: '1.21'
+    
+    - name: Install code generation tools
+      run: |
+        go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@latest
+        go install github.com/swaggo/swag/cmd/swag@latest
+    
+    - name: Generate code
+      run: make generate
+    
+    - name: Check for changes
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "Generated code differs from committed code"
+          git diff
+          exit 1
+        fi
+    
+    - name: Run tests
+      run: make test
+    
+    - name: Build applications
+      run: make build
+
+  deploy:
+    needs: [validate-spec, generate-and-test]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Deploy to production
+      run: make deploy

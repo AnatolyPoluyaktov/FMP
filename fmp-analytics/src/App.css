@@ -1,0 +1,62 @@
+/* Additional styles for analytics dashboard */
+.dashboard,
+.monthly-analytics,
+.category-analytics,
+.limit-analytics {
+  max-width: 100%;
+}
+
+/* Chart responsive adjustments */
+.recharts-wrapper {
+  width: 100% !important;
+}
+
+/* Custom tooltip styles */
+.recharts-tooltip-wrapper {
+  outline: none;
+}
+
+.recharts-tooltip-content {
+  background: white !important;
+  border: 1px solid #e0e0e0 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+}
+
+/* Loading states */
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  color: #666;
+  font-size: 1.1rem;
+}
+
+/* Empty states */
+.no-data {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+}
+
+.no-data-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 1rem;
+  opacity: 0.5;
+}
+
+/* Animation for cards */
+.summary-card,
+.stat-card,
+.chart-container {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.summary-card:hover,
+.stat-card:hover,
+.chart-container:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}

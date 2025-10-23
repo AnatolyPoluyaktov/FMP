@@ -1,0 +1,67 @@
+name: FMP Analytics CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'fmp-analytics/**' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'fmp-analytics/**' ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: fmp-analytics/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./fmp-analytics
+      run: npm ci
+    
+    - name: Run tests
+      working-directory: ./fmp-analytics
+      run: npm test -- --coverage --watchAll=false
+    
+    - name: Build
+      working-directory: ./fmp-analytics
+      run: npm run build
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: fmp-analytics-build
+        path: fmp-analytics/build
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: fmp-analytics-build
+        path: ./fmp-analytics/build/
+    
+    - name: Deploy to production
+      uses: appleboy/ssh-action@v0.1.5
+      with:
+        host: ${{ secrets.PROD_HOST }}
+        username: ${{ secrets.PROD_USER }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        script: |
+          cd /opt/fmp-analytics
+          sudo cp -r build /opt/fmp-analytics/
+          sudo systemctl reload nginx
+          sudo systemctl status nginx

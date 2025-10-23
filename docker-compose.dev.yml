@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: fmp-postgres-dev
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fmp_db}
+      POSTGRES_USER: ${POSTGRES_USER:-fmp_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./fmp-core/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - fmp-dev-network
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: fmp-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - fmp-dev-network
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+
+networks:
+  fmp-dev-network:
+    driver: bridge

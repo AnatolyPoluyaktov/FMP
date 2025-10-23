@@ -1,0 +1,32 @@
+[fmp_servers]
+fmp-core-01 ansible_host=your-core-server.com ansible_user=ubuntu
+
+[fmp_minapp_servers]
+fmp-minapp-01 ansible_host=your-minapp-server.com ansible_user=ubuntu
+
+[fmp_analytics_servers]
+fmp-analytics-01 ansible_host=your-analytics-server.com ansible_user=ubuntu
+
+[all:vars]
+ansible_ssh_private_key_file=~/.ssh/fmp_deploy_key
+ansible_python_interpreter=/usr/bin/python3
+
+# Database configuration
+db_host=your-db-server.com
+db_port=5432
+db_name=fmp
+db_user=fmp
+db_password=your-secure-password
+
+# API configuration
+api_url=https://api.your-domain.com
+
+# Telegram Bot
+telegram_bot_token=your-telegram-bot-token
+
+# Security
+jwt_secret=your-jwt-secret-key
+
+# Server configuration
+server_name=your-domain.com
+firewall_configure=true

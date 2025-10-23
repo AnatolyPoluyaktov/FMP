@@ -1,0 +1,23 @@
+[Unit]
+Description=FMP Core API Service
+After=network.target
+
+[Service]
+Type=simple
+User={{ app_user }}
+Group={{ app_group }}
+WorkingDirectory={{ app_dir }}
+ExecStart={{ app_dir }}/{{ app_name }}
+Restart=always
+RestartSec=5
+Environment=GIN_MODE=release
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ app_dir }}
+
+[Install]
+WantedBy=multi-user.target

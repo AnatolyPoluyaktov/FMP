@@ -1,0 +1,116 @@
+name: FMP Mini App CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'minapp/**' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'minapp/**' ]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: '1.21'
+    
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('minapp/backend/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Install dependencies
+      working-directory: ./minapp/backend
+      run: go mod download
+    
+    - name: Run tests
+      working-directory: ./minapp/backend
+      env:
+        FMP_CORE_URL: http://localhost:8080/api/v1
+        PORT: 8081
+        TELEGRAM_BOT_TOKEN: test-token
+      run: go test -v ./...
+    
+    - name: Build backend
+      working-directory: ./minapp/backend
+      run: go build -o fmp-minapp-backend .
+    
+    - name: Upload backend artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: fmp-minapp-backend
+        path: minapp/backend/fmp-minapp-backend
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: minapp/frontend/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./minapp/frontend
+      run: npm ci
+    
+    - name: Run tests
+      working-directory: ./minapp/frontend
+      run: npm test -- --coverage --watchAll=false
+    
+    - name: Build frontend
+      working-directory: ./minapp/frontend
+      run: npm run build
+    
+    - name: Upload frontend artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: fmp-minapp-frontend
+        path: minapp/frontend/build
+
+  deploy:
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download backend artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: fmp-minapp-backend
+        path: ./minapp/backend/
+    
+    - name: Download frontend artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: fmp-minapp-frontend
+        path: ./minapp/frontend/build/
+    
+    - name: Deploy to production
+      uses: appleboy/ssh-action@v0.1.5
+      with:
+        host: ${{ secrets.PROD_HOST }}
+        username: ${{ secrets.PROD_USER }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        script: |
+          cd /opt/fmp-minapp
+          sudo systemctl stop fmp-minapp-backend fmp-minapp-frontend
+          sudo cp backend/fmp-minapp-backend /opt/fmp-minapp/backend/
+          sudo cp -r frontend/build /opt/fmp-minapp/frontend/
+          sudo systemctl start fmp-minapp-backend fmp-minapp-frontend
+          sudo systemctl status fmp-minapp-backend fmp-minapp-frontend

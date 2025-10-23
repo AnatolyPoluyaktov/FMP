@@ -1,0 +1,106 @@
+name: FMP Core CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'fmp-core/**' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'fmp-core/**' ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fmp_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: '1.21'
+    
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('fmp-core/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Install dependencies
+      working-directory: ./fmp-core
+      run: go mod download
+    
+    - name: Run tests
+      working-directory: ./fmp-core
+      env:
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_NAME: fmp_test
+        DB_USER: postgres
+        DB_PASSWORD: postgres
+        DB_SSLMODE: disable
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+        API_SECRET_KEY: test-secret-key
+        JWT_SECRET: test-jwt-secret
+        CORS_ORIGIN: http://localhost:3000
+      run: go test -v ./...
+    
+    - name: Build
+      working-directory: ./fmp-core
+      run: go build -o fmp-core .
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: fmp-core-binary
+        path: fmp-core/fmp-core
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: fmp-core-binary
+        path: ./fmp-core/
+    
+    - name: Deploy to production
+      uses: appleboy/ssh-action@v0.1.5
+      with:
+        host: ${{ secrets.PROD_HOST }}
+        username: ${{ secrets.PROD_USER }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        envs: DB_PASSWORD,API_SECRET_KEY,JWT_SECRET,TELEGRAM_BOT_TOKEN
+      env:
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      script: |
+        cd /opt/fmp-core
+        sudo systemctl stop fmp-core
+        sudo cp fmp-core /opt/fmp-core/
+        sudo systemctl start fmp-core
+        sudo systemctl status fmp-core

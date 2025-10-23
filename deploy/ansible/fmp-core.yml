@@ -1,0 +1,126 @@
+---
+- name: Deploy FMP Core API
+  hosts: fmp_servers
+  become: yes
+  vars:
+    app_name: fmp-core
+    app_port: 8080
+    app_user: fmp
+    app_group: fmp
+    app_dir: /opt/fmp-core
+    db_host: "{{ db_host | default('localhost') }}"
+    db_port: "{{ db_port | default('5432') }}"
+    db_name: "{{ db_name | default('fmp') }}"
+    db_user: "{{ db_user | default('fmp') }}"
+    db_password: "{{ db_password }}"
+    telegram_bot_token: "{{ telegram_bot_token }}"
+
+  tasks:
+    - name: Update system packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Install required packages
+      apt:
+        name:
+          - postgresql-client
+          - curl
+          - wget
+          - unzip
+        state: present
+
+    - name: Create application user
+      user:
+        name: "{{ app_user }}"
+        group: "{{ app_group }}"
+        shell: /bin/bash
+        home: "{{ app_dir }}"
+        create_home: yes
+
+    - name: Install Go
+      blockinfile:
+        path: /etc/profile.d/go.sh
+        create: yes
+        mode: '0644'
+        content: |
+          export GOROOT=/usr/local/go
+          export PATH=$PATH:$GOROOT/bin
+      when: go_install | default(true)
+
+    - name: Download and install Go
+      unarchive:
+        src: https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
+        dest: /usr/local
+        remote_src: yes
+        owner: root
+        group: root
+        mode: '0755'
+      when: go_install | default(true)
+
+    - name: Create application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: '0755'
+
+    - name: Copy application files
+      copy:
+        src: "{{ item }}"
+        dest: "{{ app_dir }}/{{ item }}"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: '0644'
+      with_fileglob:
+        - "fmp-core/*"
+
+    - name: Create environment file
+      template:
+        src: fmp-core.env.j2
+        dest: "{{ app_dir }}/.env"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: '0600'
+
+    - name: Install Go dependencies
+      shell: |
+        cd {{ app_dir }}
+        go mod download
+      become_user: "{{ app_user }}"
+
+    - name: Build application
+      shell: |
+        cd {{ app_dir }}
+        go build -o {{ app_name }} .
+      become_user: "{{ app_user }}"
+
+    - name: Create systemd service file
+      template:
+        src: fmp-core.service.j2
+        dest: /etc/systemd/system/{{ app_name }}.service
+        mode: '0644'
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start service
+      systemd:
+        name: "{{ app_name }}"
+        enabled: yes
+        state: started
+
+    - name: Wait for service to start
+      wait_for:
+        port: "{{ app_port }}"
+        delay: 5
+        timeout: 30
+
+    - name: Configure firewall
+      ufw:
+        rule: allow
+        port: "{{ app_port }}"
+        proto: tcp
+      when: firewall_configure | default(true)

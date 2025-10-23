@@ -1,0 +1,24 @@
+server {
+    listen 80;
+    server_name {{ server_name | default('analytics.localhost') }};
+
+    # Analytics Dashboard
+    location / {
+        root {{ app_dir }}/build;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Static files
+    location /static/ {
+        alias {{ app_dir }}/build/static/;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+}

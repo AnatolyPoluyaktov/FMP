@@ -1,0 +1,163 @@
+---
+- name: Deploy FMP Mini App
+  hosts: fmp_minapp_servers
+  become: yes
+  vars:
+    app_name: fmp-minapp
+    backend_port: 8081
+    frontend_port: 3000
+    app_user: fmp
+    app_group: fmp
+    app_dir: /opt/fmp-minapp
+    api_url: "{{ api_url | default('http://localhost:8080') }}"
+    telegram_bot_token: "{{ telegram_bot_token }}"
+
+  tasks:
+    - name: Update system packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Install required packages
+      apt:
+        name:
+          - curl
+          - wget
+          - unzip
+          - nginx
+          - nodejs
+          - npm
+        state: present
+
+    - name: Create application user
+      user:
+        name: "{{ app_user }}"
+        group: "{{ app_group }}"
+        shell: /bin/bash
+        home: "{{ app_dir }}"
+        create_home: yes
+
+    - name: Create application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: '0755'
+
+    - name: Copy backend files
+      copy:
+        src: "{{ item }}"
+        dest: "{{ app_dir }}/backend/{{ item }}"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: '0644'
+      with_fileglob:
+        - "minapp/backend/*"
+
+    - name: Copy frontend files
+      copy:
+        src: "{{ item }}"
+        dest: "{{ app_dir }}/frontend/{{ item }}"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: '0644'
+      with_fileglob:
+        - "minapp/frontend/*"
+
+    - name: Create backend environment file
+      template:
+        src: minapp-backend.env.j2
+        dest: "{{ app_dir }}/backend/.env"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: '0600'
+
+    - name: Create frontend environment file
+      template:
+        src: minapp-frontend.env.j2
+        dest: "{{ app_dir }}/frontend/.env"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: '0600'
+
+    - name: Install backend dependencies
+      shell: |
+        cd {{ app_dir }}/backend
+        go mod download
+      become_user: "{{ app_user }}"
+
+    - name: Build backend
+      shell: |
+        cd {{ app_dir }}/backend
+        go build -o {{ app_name }}-backend .
+      become_user: "{{ app_user }}"
+
+    - name: Install frontend dependencies
+      shell: |
+        cd {{ app_dir }}/frontend
+        npm install
+      become_user: "{{ app_user }}"
+
+    - name: Build frontend
+      shell: |
+        cd {{ app_dir }}/frontend
+        npm run build
+      become_user: "{{ app_user }}"
+
+    - name: Create backend systemd service file
+      template:
+        src: minapp-backend.service.j2
+        dest: /etc/systemd/system/{{ app_name }}-backend.service
+        mode: '0644'
+
+    - name: Create frontend systemd service file
+      template:
+        src: minapp-frontend.service.j2
+        dest: /etc/systemd/system/{{ app_name }}-frontend.service
+        mode: '0644'
+
+    - name: Configure nginx
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/sites-available/{{ app_name }}
+        mode: '0644'
+
+    - name: Enable nginx site
+      file:
+        src: /etc/nginx/sites-available/{{ app_name }}
+        dest: /etc/nginx/sites-enabled/{{ app_name }}
+        state: link
+
+    - name: Remove default nginx site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Test nginx configuration
+      command: nginx -t
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start services
+      systemd:
+        name: "{{ item }}"
+        enabled: yes
+        state: started
+      loop:
+        - "{{ app_name }}-backend"
+        - "{{ app_name }}-frontend"
+        - nginx
+
+    - name: Configure firewall
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "80"
+        - "443"
+        - "{{ backend_port }}"
+      when: firewall_configure | default(true)
